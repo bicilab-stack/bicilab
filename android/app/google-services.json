@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "619445818764",
+    "project_id": "bicilab-dd105",
+    "storage_bucket": "bicilab-dd105.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:619445818764:android:8d7439fa4489dc3766f2a9",
+        "android_client_info": {
+          "package_name": "com.example.bicilab"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC28GtMe9UBdfcOLGX9gO1s7G0gkIMzoZ8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
