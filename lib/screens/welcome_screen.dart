@@ -29,26 +29,32 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 60),
               
               // --- ZONA DEL LOGO ---
-              // Por ahora puse un ícono de bicicleta de placeholder. 
-              // Luego lo cambias por Image.asset('assets/logo.png')
               Container(
-                width: 120,
-                height: 120,
+                width: 140,
+                height: 140,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: const [
                     BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 10,
-                      offset: Offset(0, 5),
+                      color: Colors.black26,
+                      blurRadius: 12,
+                      offset: Offset(0, 6),
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.pedal_bike, 
-                  size: 70, 
-                  color: Colors.green, // Color representativo temporal
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.cover,
+                    semanticLabel: 'Logo de BiciLab',
+                    // Si el archivo no se encuentra, no rompe la pantalla.
+                    errorBuilder: (_, __, ___) => Container(
+                      color: Colors.white,
+                      child: const Icon(Icons.pedal_bike,
+                          size: 70, color: Colors.black87),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 30),

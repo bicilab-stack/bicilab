@@ -19,10 +19,19 @@ class BiciLabApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       title: 'BiciLab',
       debugShowCheckedModeBanner: false,
-      home: AuthGate(),
+      theme: ThemeData(
+        useMaterial3: true,
+        // Mensajes flotantes y spinners en negro: coherentes con la app.
+        snackBarTheme: const SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+        ),
+        progressIndicatorTheme:
+            const ProgressIndicatorThemeData(color: Colors.black),
+      ),
+      home: const AuthGate(),
     );
   }
 }

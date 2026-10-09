@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../services/recommendation_service.dart';
 import '../services/ride_tracker.dart';
@@ -33,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _tracker.removeListener(_followUser);
+    WakelockPlus.disable();
     _tracker.dispose();
     super.dispose();
   }
@@ -44,15 +48,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _msg(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<bool> _confirmFinish() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Terminar recorrido?'),
+        content: const Text('Se guardará tu sesión y se generará una '
+            'sugerencia para tu entrenador.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Seguir')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Terminar')),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   Future<void> _toggle() async {
     if (_busy) return;
+    if (_tracker.tracking && !await _confirmFinish()) return;
+
     setState(() => _busy = true);
     try {
       if (_tracker.tracking) {
-        final saved = await _tracker.stopAndSave();
+        // Sin internet, Firestore guarda en cola y no responde: no dejamos
+        // la pantalla colgada; el dato se sincroniza solo al volver la red.
+        final saved = await _tracker
+            .stopAndSave()
+            .timeout(const Duration(seconds: 20));
         if (saved == null) {
           _msg('Recorrido muy corto (menos de 10 s): no se guardó');
         } else {
@@ -62,11 +94,21 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       } else {
         final err = await _tracker.start();
-        if (err != null) _msg(err);
+        if (err != null) {
+          _msg(err);
+        } else {
+          // Mantiene la pantalla encendida: con pantalla apagada Android
+          // puede pausar el GPS.
+          WakelockPlus.enable();
+        }
       }
+    } on TimeoutException {
+      _msg('Sin conexión: tu recorrido se sincronizará cuando vuelva internet');
     } catch (e) {
-      _msg('No se pudo guardar el recorrido: $e');
+      debugPrint('Error en recorrido: $e');
+      _msg('No se pudo guardar el recorrido. Inténtalo de nuevo');
     } finally {
+      if (!_tracker.tracking) WakelockPlus.disable();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -116,7 +158,12 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, _) {
             final t = _tracker;
             final demo = t.demoSensors ? ' (demo)' : '';
-            return Padding(
+            return PopScope(
+              canPop: !t.tracking,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!didPop) _msg('Termina el recorrido antes de salir');
+              },
+              child: Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
               child: Column(
@@ -245,6 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 6),
                 ],
               ),
+            ),
             );
           },
         ),

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/coach_code_service.dart';
+import '../utils/auth_errors.dart';
 import 'coach_screen.dart';
 import 'home_screen.dart';
 
@@ -35,7 +36,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _msg(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
   InputDecoration _decoration(String hint) => InputDecoration(
@@ -55,6 +58,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (nombre.isEmpty || email.isEmpty || pass.isEmpty) {
       _msg('Completa nombre, correo y contraseña');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      _msg('El correo no tiene un formato válido');
+      return;
+    }
+    if (pass.length < 6) {
+      _msg('La contraseña debe tener al menos 6 caracteres');
       return;
     }
     if (pass != _confirmPasswordController.text.trim()) {
@@ -106,9 +117,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         (route) => false,
       );
     } on FirebaseAuthException catch (e) {
-      _msg('Error: ${e.message}');
+      _msg(friendlyAuthError(e));
     } catch (e) {
-      _msg('Error inesperado: $e');
+      debugPrint('Register error: $e');
+      _msg('No se pudo completar el registro. Revisa tu conexión e inténtalo de nuevo');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
