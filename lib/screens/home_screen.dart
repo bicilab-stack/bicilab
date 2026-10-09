@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../services/recommendation_service.dart';
 import '../services/ride_tracker.dart';
+import 'athlete_history_screen.dart';
 import 'welcome_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -55,6 +57,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _msg('Recorrido muy corto (menos de 10 s): no se guardó');
         } else {
           _msg('Recorrido guardado: ${saved['distanceKm']} km');
+          // No bloquea la pantalla: la IA tarda unos segundos.
+          _generateRecommendation(saved);
         }
       } else {
         final err = await _tracker.start();
@@ -64,6 +68,20 @@ class _HomeScreenState extends State<HomeScreen> {
       _msg('No se pudo guardar el recorrido: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _generateRecommendation(Map<String, dynamic> session) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final sent = await RecommendationService().generateFor(uid, session);
+      _msg(sent
+          ? 'Sugerencia enviada a tu entrenador para revisión'
+          : 'Vincula un entrenador para recibir recomendaciones');
+    } catch (e) {
+      debugPrint('Error generando recomendación: $e');
+      _msg('No se pudo generar la recomendación (el recorrido sí se guardó)');
     }
   }
 
@@ -105,7 +123,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Row(
                     children: [
-                      const SizedBox(width: 48),
+                      IconButton(
+                        tooltip: 'Mi progreso',
+                        icon: const Icon(Icons.history),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const AthleteHistoryScreen()),
+                        ),
+                      ),
                       const Expanded(
                         child: Text(
                           'BiciLab',
@@ -141,15 +166,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.example.bicilab',
                           ),
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: List.of(t.route),
-                                strokeWidth: 5,
-                                color: Colors.blueAccent,
-                              ),
-                            ],
-                          ),
+                          if (t.route.length >= 2)
+                            PolylineLayer(
+                              polylines: [
+                                Polyline(
+                                  points: List.of(t.route),
+                                  strokeWidth: 5,
+                                  color: Colors.blueAccent,
+                                ),
+                              ],
+                            ),
                           if (t.route.isNotEmpty)
                             MarkerLayer(
                               markers: [
