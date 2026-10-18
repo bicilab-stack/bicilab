@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/progress_charts.dart';
+
 /// Vista del deportista: recomendaciones APROBADAS por su entrenador y el
 /// historial de sus recorridos.
 class AthleteHistoryScreen extends StatefulWidget {
@@ -41,7 +43,7 @@ class _AthleteHistoryScreenState extends State<AthleteHistoryScreen> {
       return const Scaffold(body: Center(child: Text('No hay sesión activa')));
     }
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
@@ -54,14 +56,26 @@ class _AthleteHistoryScreenState extends State<AthleteHistoryScreen> {
           bottom: const TabBar(
             labelColor: Colors.black,
             indicatorColor: Colors.black,
-            tabs: [Tab(text: 'Recomendaciones'), Tab(text: 'Recorridos')],
+            tabs: [
+              Tab(text: 'Sugerencias'),
+              Tab(text: 'Recorridos'),
+              Tab(text: 'Gráficas'),
+            ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _RecommendationsTab(stream: _recsStream),
-            _SessionsTab(stream: _sessionsStream),
-          ],
+        // Un solo StreamBuilder para los recorridos: lo comparten las
+        // pestañas "Recorridos" y "Gráficas" (así no se escucha dos veces).
+        body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _sessionsStream,
+          builder: (context, snap) {
+            return TabBarView(
+              children: [
+                _RecommendationsTab(stream: _recsStream),
+                _SessionsTab(snap: snap),
+                _ChartsTab(snap: snap),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -194,31 +208,46 @@ class _RecommendationCard extends StatelessWidget {
 // Historial de recorridos
 // ---------------------------------------------------------------------------
 class _SessionsTab extends StatelessWidget {
-  final Stream<QuerySnapshot<Map<String, dynamic>>> stream;
-  const _SessionsTab({required this.stream});
+  final AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snap;
+  const _SessionsTab({required this.snap});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: stream,
-      builder: (context, snap) {
-        if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
-        }
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return const Center(child: Text('Aún no has registrado recorridos.'));
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: docs.length,
-          itemBuilder: (context, i) => _SessionCard(data: docs[i].data()),
-        );
-      },
+    if (snap.hasError) {
+      return Center(child: Text('Error: ${snap.error}'));
+    }
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final docs = snap.data?.docs ?? [];
+    if (docs.isEmpty) {
+      return const Center(child: Text('Aún no has registrado recorridos.'));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: docs.length,
+      itemBuilder: (context, i) => _SessionCard(data: docs[i].data()),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Gráficas de progreso
+// ---------------------------------------------------------------------------
+class _ChartsTab extends StatelessWidget {
+  final AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snap;
+  const _ChartsTab({required this.snap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (snap.hasError) {
+      return Center(child: Text('Error: ${snap.error}'));
+    }
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final sessions = snap.data?.docs.map((d) => d.data()).toList() ?? [];
+    return ProgressCharts(sessions: sessions);
   }
 }
 
