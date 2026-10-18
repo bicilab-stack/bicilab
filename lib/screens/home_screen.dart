@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,27 @@ import '../services/recommendation_service.dart';
 import '../services/ride_tracker.dart';
 import 'athlete_history_screen.dart';
 import 'welcome_screen.dart';
+
+// Paleta del logo de BiciLab.
+const _yellow = Color(0xFFFFCC00);
+const _red = Color(0xFFFF0000);
+const _bg = Color(0xFF0E0E0E);
+const _tile = Color(0xFF1A1A1A);
+const _chip = Color(0xFF1F1F1F);
+const _muted = Color(0xFF999999);
+
+// Tipografía de la pantalla. null = la fuente por defecto de Android (Roboto).
+// Cuando tengas la licencia de Typo Round, declara la fuente en pubspec.yaml
+// y cambia esta línea por: const String? _font = 'TypoRound';
+const String? _font = null;
+
+// Filtro que oscurece los tiles de OpenStreetMap (invierte a gris oscuro).
+const _darkTiles = ColorFilter.matrix(<double>[
+  -0.2126, -0.7152, -0.0722, 0, 255,
+  -0.2126, -0.7152, -0.0722, 0, 255,
+  -0.2126, -0.7152, -0.0722, 0, 255,
+  0, 0, 0, 1, 0,
+]);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -123,7 +145,8 @@ class _HomeScreenState extends State<HomeScreen> {
           : 'Vincula un entrenador para recibir recomendaciones');
     } catch (e) {
       debugPrint('Error generando recomendación: $e');
-      _msg('No se pudo generar la recomendación (el recorrido sí se guardó)');
+      _msg('La IA no respondió ahora (el recorrido sí se guardó). '
+          'Inténtalo de nuevo en unos minutos');
     }
   }
 
@@ -148,151 +171,236 @@ class _HomeScreenState extends State<HomeScreen> {
     return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
   }
 
+  Widget _roundIcon(String tooltip, IconData icon, VoidCallback onTap) {
+    return Material(
+      color: _chip,
+      shape: const CircleBorder(),
+      child: IconButton(
+        tooltip: tooltip,
+        icon: Icon(icon, color: _yellow),
+        onPressed: onTap,
+      ),
+    );
+  }
+
+  Widget _map(RideTracker t) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        height: 220,
+        foregroundDecoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFF2A2A2A), width: 2),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _defaultCenter,
+            initialZoom: 15,
+            onMapReady: () => _mapReady = true,
+          ),
+          children: [
+            ColorFiltered(
+              colorFilter: _darkTiles,
+              child: TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.bicilab',
+              ),
+            ),
+            if (t.route.length >= 2)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: List.of(t.route),
+                    strokeWidth: 5,
+                    color: _yellow,
+                  ),
+                ],
+              ),
+            if (t.route.isNotEmpty)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: t.route.last,
+                    width: 28,
+                    height: 28,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _red,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _bg,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: _tracker,
           builder: (context, _) {
             final t = _tracker;
-            final demo = t.demoSensors ? ' (demo)' : '';
             return PopScope(
               canPop: !t.tracking,
               onPopInvokedWithResult: (didPop, _) {
                 if (!didPop) _msg('Termina el recorrido antes de salir');
               },
               child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Mi progreso',
-                        icon: const Icon(Icons.history),
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => const AthleteHistoryScreen()),
-                        ),
-                      ),
-                      const Expanded(
-                        child: Text(
-                          'BiciLab',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Cerrar sesión',
-                        icon: const Icon(Icons.logout),
-                        onPressed: _logout,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    flex: 4,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: FlutterMap(
-                        mapController: _mapController,
-                        options: MapOptions(
-                          initialCenter: _defaultCenter,
-                          initialZoom: 15,
-                          onMapReady: () => _mapReady = true,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.example.bicilab',
-                          ),
-                          if (t.route.length >= 2)
-                            PolylineLayer(
-                              polylines: [
-                                Polyline(
-                                  points: List.of(t.route),
-                                  strokeWidth: 5,
-                                  color: Colors.blueAccent,
-                                ),
-                              ],
-                            ),
-                          if (t.route.isNotEmpty)
-                            MarkerLayer(
-                              markers: [
-                                Marker(
-                                  point: t.route.last,
-                                  width: 40,
-                                  height: 40,
-                                  child: const Icon(Icons.pedal_bike,
-                                      size: 32, color: Colors.redAccent),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    flex: 5,
-                    child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        MetricCard(label: 'Tiempo: ${_fmtDuration(t.elapsed)}'),
-                        const SizedBox(height: 10),
-                        MetricCard(
-                            label:
-                                'Velocidad: ${t.speedKmh.toStringAsFixed(1)} km/h'),
-                        const SizedBox(height: 10),
-                        MetricCard(
-                            label:
-                                'Distancia: ${(t.distanceM / 1000).toStringAsFixed(2)} km'),
-                        const SizedBox(height: 10),
-                        MetricCard(label: 'Cadencia: ${t.cadence} RPM$demo'),
-                        const SizedBox(height: 10),
-                        MetricCard(
-                            label: 'Frecuencia cardiaca: ${t.hr} BPM$demo'),
+                        _roundIcon(
+                          'Mi progreso',
+                          Icons.history,
+                          () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const AthleteHistoryScreen()),
+                          ),
+                        ),
+                        const Expanded(
+                          child: Text(
+                            'BiciLab',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: _font,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        _roundIcon('Cerrar sesión', Icons.logout, _logout),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _busy ? null : _toggle,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            t.tracking ? Colors.red[700] : Colors.black,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
-                      ),
-                      child: _busy
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : Text(
-                              t.tracking
-                                  ? 'TERMINAR RECORRIDO'
-                                  : 'INICIAR RECORRIDO',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
+                    const SizedBox(height: 12),
+                    _map(t),
+                    // Parte central con scroll por si la pantalla es pequeña.
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 12),
+                            const Text('VELOCIDAD',
+                                style: TextStyle(
+                                    fontFamily: _font,
+                                    color: _muted,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 2)),
+                            Text(
+                              t.speedKmh.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontFamily: _font,
+                                color: _yellow,
+                                fontSize: 80,
+                                height: 1.05,
+                                fontWeight: FontWeight.w800,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
                             ),
+                            const Text('km/h',
+                                style: TextStyle(
+                                    fontFamily: _font,
+                                    color: _muted,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _StatTile(
+                                    label: 'Tiempo',
+                                    value: _fmtDuration(t.elapsed),
+                                    accent: _yellow,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _StatTile(
+                                    label: 'Distancia',
+                                    value:
+                                        (t.distanceM / 1000).toStringAsFixed(2),
+                                    unit: 'km',
+                                    accent: _yellow,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _StatTile(
+                                    label: 'Cadencia',
+                                    value: '${t.cadence}',
+                                    unit: 'RPM',
+                                    accent: const Color(0xFF3A3A3A),
+                                    demo: t.demoSensors,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _StatTile(
+                                    label: 'Frec. cardiaca',
+                                    value: '${t.hr}',
+                                    unit: 'BPM',
+                                    accent: _red,
+                                    demo: t.demoSensors,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 60,
+                      child: ElevatedButton(
+                        onPressed: _busy ? null : _toggle,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: t.tracking ? _red : _yellow,
+                          foregroundColor:
+                              t.tracking ? Colors.white : Colors.black,
+                          disabledBackgroundColor: const Color(0xFF3A3A3A),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30)),
+                        ),
+                        child: _busy
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : Text(
+                                t.tracking
+                                    ? 'TERMINAR RECORRIDO'
+                                    : 'INICIAR RECORRIDO',
+                                style: const TextStyle(
+                                  fontFamily: _font,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             );
           },
         ),
@@ -301,25 +409,92 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class MetricCard extends StatelessWidget {
+class _StatTile extends StatelessWidget {
   final String label;
+  final String value;
+  final String? unit;
+  final Color accent;
+  final bool demo;
 
-  const MetricCard({super.key, required this.label});
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.accent,
+    this.unit,
+    this.demo = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(25),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: Colors.black,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        color: _tile,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(height: 3, color: accent),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: Text(label,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontFamily: _font,
+                                color: _muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      if (demo)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _yellow,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('demo',
+                              style: TextStyle(
+                                  fontFamily: _font,
+                                  color: Colors.black,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text.rich(
+                    TextSpan(
+                      text: value,
+                      style: const TextStyle(
+                        fontFamily: _font,
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                      children: [
+                        if (unit != null)
+                          TextSpan(
+                            text: ' $unit',
+                            style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: _muted),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
