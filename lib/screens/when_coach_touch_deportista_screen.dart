@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/progress_charts.dart';
+
 /// Pantalla que ve el entrenador al tocar un deportista.
 /// Muestra las recomendaciones generadas por la IA y deja que el entrenador
 /// las apruebe, edite o rechace: la decisión final es siempre humana.
@@ -29,7 +31,7 @@ class DeportistaDetailScreen extends StatelessWidget {
         .doc(docId)
         .update({
       'status': approve ? 'approved' : 'rejected',
-      if (editedText != null) 'finalText': editedText,
+      'finalText': ?editedText,
       'decidedBy': FirebaseAuth.instance.currentUser?.uid,
       'decidedAt': FieldValue.serverTimestamp(),
     });
@@ -61,17 +63,35 @@ class DeportistaDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
-        title: Text(athleteName,
-            style: const TextStyle(
-                color: Colors.black, fontWeight: FontWeight.bold)),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Colors.black),
+          title: Text(athleteName,
+              style: const TextStyle(
+                  color: Colors.black, fontWeight: FontWeight.bold)),
+          bottom: const TabBar(
+            labelColor: Colors.black,
+            indicatorColor: Colors.black,
+            tabs: [Tab(text: 'Sugerencias'), Tab(text: 'Progreso')],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildSuggestions(context),
+            _AthleteChartsTab(athleteId: athleteId),
+          ],
+        ),
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    );
+  }
+
+  Widget _buildSuggestions(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         // Solo where() de igualdad: no requiere índice compuesto.
         // El orden se hace en el cliente.
         stream: FirebaseFirestore.instance
@@ -156,7 +176,45 @@ class DeportistaDetailScreen extends StatelessWidget {
             },
           );
         },
-      ),
+    );
+  }
+}
+
+/// Pestaña "Progreso" del entrenador: las mismas gráficas que ve el deportista,
+/// con los recorridos de ese deportista (las reglas permiten leerlos al
+/// entrenador asignado).
+class _AthleteChartsTab extends StatefulWidget {
+  final String athleteId;
+  const _AthleteChartsTab({required this.athleteId});
+
+  @override
+  State<_AthleteChartsTab> createState() => _AthleteChartsTabState();
+}
+
+class _AthleteChartsTabState extends State<_AthleteChartsTab> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _stream =
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.athleteId)
+          .collection('sessions')
+          .orderBy('endedAt', descending: true)
+          .limit(50)
+          .snapshots();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _stream,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Center(child: Text('Error: ${snap.error}'));
+        }
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final sessions = snap.data?.docs.map((d) => d.data()).toList() ?? [];
+        return ProgressCharts(sessions: sessions);
+      },
     );
   }
 }
