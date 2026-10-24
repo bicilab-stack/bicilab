@@ -103,9 +103,11 @@ class RecommendationService {
     if (coachId == null) return false;
 
     // Solo métricas: NO se envía nombre, correo ni ubicación (privacidad).
-    final source = m['sensorSource'] == 'demo'
-        ? 'SIMULADOS (modo demo)'
-        : 'medidos con sensor';
+    // La frecuencia cardíaca puede venir de la smartband ('band') o simulada
+    // ('demo'). La cadencia siempre es simulada: no hay sensor de cadencia.
+    final hrNote = m['sensorSource'] == 'band'
+        ? 'La frecuencia cardíaca fue MEDIDA por una smartband.'
+        : 'La frecuencia cardíaca fue SIMULADA (modo demo).';
     final prompt = 'Métricas de la última salida: '
         'distancia ${m['distanceKm']} km, duración ${m['durationMin']} min, '
         'velocidad media ${m['avgSpeedKmh']} km/h, '
@@ -114,7 +116,7 @@ class RecommendationService {
         'cadencia media ${m['avgCadenceRpm']} rpm, '
         'frecuencia cardíaca media ${m['avgHr']} bpm, '
         'FC máxima ${m['maxHr']} bpm. '
-        'La frecuencia cardíaca y la cadencia fueron $source.';
+        '$hrNote La cadencia es SIMULADA: no la uses para sacar conclusiones.';
 
     final result = await _generate(prompt);
 

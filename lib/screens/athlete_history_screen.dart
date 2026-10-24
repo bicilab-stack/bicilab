@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/health_service.dart';
 import '../widgets/progress_charts.dart';
 
 /// Vista del deportista: recomendaciones APROBADAS por su entrenador y el
@@ -226,7 +227,8 @@ class _SessionsTab extends StatelessWidget {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: docs.length,
-      itemBuilder: (context, i) => _SessionCard(data: docs[i].data()),
+      itemBuilder: (context, i) =>
+          _SessionCard(id: docs[i].id, data: docs[i].data()),
     );
   }
 }
@@ -251,13 +253,63 @@ class _ChartsTab extends StatelessWidget {
   }
 }
 
-class _SessionCard extends StatelessWidget {
+class _SessionCard extends StatefulWidget {
+  final String id;
   final Map<String, dynamic> data;
-  const _SessionCard({required this.data});
+  const _SessionCard({required this.id, required this.data});
+
+  @override
+  State<_SessionCard> createState() => _SessionCardState();
+}
+
+class _SessionCardState extends State<_SessionCard> {
+  bool _syncing = false;
+
+  /// Trae el pulso de la banda (Health Connect) para este recorrido.
+  Future<void> _syncBand() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final start = widget.data['startedAt'];
+    final end = widget.data['endedAt'];
+    if (uid == null || start is! Timestamp || end is! Timestamp) return;
+
+    setState(() => _syncing = true);
+    String msg;
+    try {
+      final service = HealthService();
+      final ok = await service.requestAccess();
+      if (!ok) {
+        msg = 'No se pudo acceder a Health Connect. ¿Está instalado y con '
+            'permiso para BiciLab?';
+      } else {
+        final hr = await service
+            .syncSession(
+              uid: uid,
+              sessionId: widget.id,
+              start: start.toDate(),
+              end: end.toDate(),
+            )
+            .timeout(const Duration(seconds: 15));
+        msg = hr == null
+            ? 'Aún no hay pulso para este recorrido. Sincroniza Mi Fitness e '
+                'inténtalo de nuevo'
+            : 'Pulso importado: ${hr.avg} bpm de media';
+      }
+    } catch (e) {
+      debugPrint('Error trayendo el pulso: $e');
+      msg = 'No se pudo traer el pulso de la banda';
+    }
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   @override
   Widget build(BuildContext context) {
+    final data = widget.data;
     final demo = data['sensorSource'] == 'demo';
+    final band = data['sensorSource'] == 'band';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -277,6 +329,9 @@ class _SessionCard extends StatelessWidget {
             if (demo)
               const Text('FC/cadencia demo',
                   style: TextStyle(fontSize: 11, color: Colors.black54)),
+            if (band)
+              const Text('FC de la banda · cadencia demo',
+                  style: TextStyle(fontSize: 11, color: Colors.black54)),
           ]),
           const SizedBox(height: 10),
           Wrap(
@@ -291,6 +346,20 @@ class _SessionCard extends StatelessWidget {
               _Stat(Icons.terrain, _v(data, 'elevationGainM', ' m')),
             ],
           ),
+          if (demo)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _syncing ? null : _syncBand,
+                icon: _syncing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.watch, size: 18),
+                label: const Text('Traer pulso de la banda'),
+              ),
+            ),
         ],
       ),
     );

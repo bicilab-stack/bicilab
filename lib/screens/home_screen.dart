@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show FontFeature;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../services/health_service.dart';
 import '../services/recommendation_service.dart';
 import '../services/ride_tracker.dart';
 import 'athlete_history_screen.dart';
@@ -81,7 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('¿Terminar recorrido?'),
         content: const Text('Se guardará tu sesión y se generará una '
-            'sugerencia para tu entrenador.'),
+            'sugerencia para tu entrenador.\n\nPara importar el pulso de tu '
+            'banda, abre Mi Fitness un momento y sincronízala antes de '
+            'terminar.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -111,8 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _msg('Recorrido muy corto (menos de 10 s): no se guardó');
         } else {
           _msg('Recorrido guardado: ${saved['distanceKm']} km');
-          // No bloquea la pantalla: la IA tarda unos segundos.
-          _generateRecommendation(saved);
+          // No bloquea la pantalla: trae el pulso de la banda (si hay) y
+          // luego la IA, que tarda unos segundos.
+          _afterSave(saved);
         }
       } else {
         final err = await _tracker.start();
@@ -122,6 +125,8 @@ class _HomeScreenState extends State<HomeScreen> {
           // Mantiene la pantalla encendida: con pantalla apagada Android
           // puede pausar el GPS.
           WakelockPlus.enable();
+          // Pide (una sola vez) permiso para leer el pulso de la banda.
+          unawaited(HealthService().requestAccess());
         }
       }
     } on TimeoutException {
@@ -133,6 +138,43 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!_tracker.tracking) WakelockPlus.disable();
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Después de guardar: intenta traer el pulso real de la banda desde
+  /// Health Connect y, con esos datos, genera la sugerencia de la IA.
+  Future<void> _afterSave(Map<String, dynamic> saved) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final start = _tracker.lastStartedAt;
+    final end = _tracker.lastEndedAt;
+    var metrics = saved;
+
+    if (uid != null && start != null && end != null && saved['id'] != null) {
+      try {
+        final hr = await HealthService()
+            .syncSession(
+              uid: uid,
+              sessionId: saved['id'] as String,
+              start: start,
+              end: end,
+            )
+            .timeout(const Duration(seconds: 15));
+        if (hr != null) {
+          metrics = {
+            ...saved,
+            'avgHr': hr.avg,
+            'maxHr': hr.max,
+            'sensorSource': 'band',
+          };
+          _msg('Pulso de la banda importado: ${hr.avg} bpm de media');
+        } else {
+          _msg('Aún no hay pulso de la banda. Sincroniza Mi Fitness y tráelo '
+              'desde Mi progreso');
+        }
+      } catch (e) {
+        debugPrint('No se pudo importar el pulso: $e');
+      }
+    }
+    await _generateRecommendation(metrics);
   }
 
   Future<void> _generateRecommendation(Map<String, dynamic> session) async {

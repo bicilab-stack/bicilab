@@ -27,6 +27,10 @@ class RideTracker extends ChangeNotifier {
   Duration elapsed = Duration.zero;
   bool demoSensors = true;
 
+  /// Inicio y fin del último recorrido (para pedir el pulso a Health Connect).
+  DateTime? lastStartedAt;
+  DateTime? lastEndedAt;
+
   // ---- Internos ----
   StreamSubscription<Position>? _posSub;
   Timer? _timer;
@@ -188,6 +192,8 @@ class RideTracker extends ChangeNotifier {
     _timer = null;
     _watch.stop();
     tracking = false;
+    lastStartedAt = _startedAt;
+    lastEndedAt = DateTime.now();
 
     final seconds = _watch.elapsed.inSeconds;
     final user = FirebaseAuth.instance.currentUser;
